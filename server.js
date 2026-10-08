@@ -21,7 +21,18 @@ app.use(express.json());
 app.use('/api/siswa', siswaRoutes);
 app.use('/api/presensi', presensiRoutes);
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3000;
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} sudah digunakan. Tutup proses lama atau ganti PORT.`);
+    process.exit(1);
+  }
+
+  console.error('Server error:', err);
+  process.exit(1);
+});
+
 server.listen(PORT, () => {
   console.log(`🚀 Backend Server berjalan di http://localhost:${PORT}`);
 });

@@ -1,12 +1,15 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-const DB_USER = process.env.DB_USER || 'root';
-const DB_PASSWORD = process.env.DB_PASSWORD || '';
-const DB_NAME = process.env.DB_NAME || 'db_sekolah';
+const DB_USER = (process.env.DB_USER || 'root').trim();
+const DB_PASSWORD = (process.env.DB_PASSWORD || '').trim();
+const DB_NAME = (process.env.DB_NAME || 'db_sekolah').trim();
+const DB_HOST = (process.env.DB_HOST || '127.0.0.1').trim();
+const DB_PORT = Number(process.env.DB_PORT || 3306);
 
-// Konfigurasi koneksi utama
 const dbConfig = {
+  host: DB_HOST,
+  port: DB_PORT,
   user: DB_USER,
   password: DB_PASSWORD,
   database: DB_NAME,
@@ -15,34 +18,16 @@ const dbConfig = {
   queueLimit: 0
 };
 
-// Deteksi otomatis: Gunakan socketPath jika ada di .env (misal Mac XAMPP),
-// jika tidak terisi, gunakan port TCP standar (127.0.0.1:3306).
-if (process.env.DB_SOCKET_PATH) {
-  dbConfig.socketPath = process.env.DB_SOCKET_PATH;
-} else {
-  dbConfig.host = process.env.DB_HOST || '127.0.0.1';
-  dbConfig.port = 3306;
-}
-
 const pool = mysql.createPool(dbConfig);
 
-// Inisialisasi Database & Tabel Otomatis
 const initDb = async () => {
   try {
-    // Konfigurasi koneksi sementara untuk membuat database
-    const tempConfig = {
+    const tempConn = await mysql.createConnection({
+      host: DB_HOST,
+      port: DB_PORT,
       user: DB_USER,
       password: DB_PASSWORD
-    };
-
-    if (process.env.DB_SOCKET_PATH) {
-      tempConfig.socketPath = process.env.DB_SOCKET_PATH;
-    } else {
-      tempConfig.host = process.env.DB_HOST || '127.0.0.1';
-      tempConfig.port = 3306;
-    }
-
-    const tempConn = await mysql.createConnection(tempConfig);
+    });
 
     // 1. Buat Database jika belum ada
     await tempConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;`);
@@ -70,9 +55,9 @@ const initDb = async () => {
       );
     `);
 
-    console.log(`✅ Database '${DB_NAME}' dan tabel berhasil disiapkan.`);
+    console.log(`Database '${DB_NAME}' dan tabel berhasil disiapkan.`);
   } catch (err) {
-    console.error('❌ Gagal inisialisasi database:', err);
+    console.error('Gagal inisialisasi database:', err);
   }
 };
 
