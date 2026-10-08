@@ -28,7 +28,7 @@ exports.scanBarcode = async (req, res) => {
     const waktuMasuk = new Date();
 
     // 3. Hitung keterlambatan berdasarkan jam batas di .env
-    const jamBatasEnv = process.env.JAM_MASUK_BATAS || '07:15';
+    const jamBatasEnv = process.env.JAM_MASUK_BATAS;
     const [jamBatas, menitBatas] = jamBatasEnv.split(':').map(Number);
     const jamSekarang = waktuMasuk.getHours();
     const menitSekarang = waktuMasuk.getMinutes();
