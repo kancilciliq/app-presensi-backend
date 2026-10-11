@@ -1,3 +1,5 @@
+// [BARU] Zona waktu harus diatur SEBELUM koneksi database dibuat
+require('./timezone');
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
@@ -19,6 +21,13 @@ const dbConfig = {
 };
 
 const pool = mysql.createPool(dbConfig);
+
+// [BARU] Samakan zona waktu sesi MySQL dengan Node.js. Tanpa ini, CURDATE() /
+// NOW() di MySQL bisa berbeda hari/jam dengan waktu yang dicatat aplikasi.
+const offsetMenit = -new Date().getTimezoneOffset();
+const abs = Math.abs(offsetMenit);
+const OFFSET_DB = `${offsetMenit >= 0 ? '+' : '-'}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
+pool.pool.on('connection', (conn) => conn.query(`SET time_zone = '${OFFSET_DB}'`));
 
 const initDb = async () => {
   try {
@@ -54,6 +63,26 @@ const initDb = async () => {
         FOREIGN KEY (nis) REFERENCES siswa(nis) ON DELETE CASCADE
       );
     `);
+
+    // [BARU] 4. Tabel pengaturan jam (key-value). Jika kosong, aplikasi memakai
+    //    nilai bawaan (jam batas masuk diambil dari JAM_MASUK_BATAS di .env).
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pengaturan (
+        kunci VARCHAR(50) PRIMARY KEY,
+        nilai VARCHAR(100) NOT NULL
+      );
+    `);
+
+    // [BARU] 5. Kolom waktu_pulang di tabel presensi (untuk database lama).
+    //    MySQL tidak punya "ADD COLUMN IF NOT EXISTS", jadi dicek manual.
+    const [kolom] = await pool.query(
+      `SELECT COUNT(*) AS jml FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'presensi' AND COLUMN_NAME = 'waktu_pulang'`,
+      [DB_NAME]
+    );
+    if (kolom[0].jml === 0) {
+      await pool.query('ALTER TABLE presensi ADD COLUMN waktu_pulang DATETIME NULL DEFAULT NULL AFTER waktu_masuk');
+    }
 
     console.log(`Database '${DB_NAME}' dan tabel berhasil disiapkan.`);
   } catch (err) {
