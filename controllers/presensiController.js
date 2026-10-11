@@ -2,8 +2,22 @@ const db = require('../config/db');
 const { getIo } = require('../services/socketService');
 const { kirimNotifikasiWA } = require('../services/waService');
 
+// [BARU] Daftar NIS yang sedang diproses. Jika kamera mengirim QR yang sama
+// 2x dalam hitungan milidetik, request kedua ditolak sehingga tidak
+// tercatat ganda (race condition).
+const sedangDiproses = new Set();
+
 exports.scanBarcode = async (req, res) => {
-  const { nis } = req.body;
+  // [DIUBAH] NIS dirapikan (trim) & divalidasi dulu
+  const nis = String(req.body?.nis ?? '').trim();
+  if (!nis) {
+    return res.status(400).json({ message: 'NIS tidak boleh kosong' });
+  }
+
+  if (sedangDiproses.has(nis)) {
+    return res.status(409).json({ sudah_scan: true, message: 'Scan sedang diproses, mohon tunggu sebentar' });
+  }
+  sedangDiproses.add(nis);
 
   try {
     // 1. Cari data siswa berdasarkan NIS
@@ -11,20 +25,31 @@ exports.scanBarcode = async (req, res) => {
     if (siswaRows.length === 0) {
       return res.status(404).json({ message: 'Siswa tidak ditemukan' });
     }
+    const siswa = siswaRows[0];
 
-    // 2. Pengecekan: Apakah siswa sudah scan/absen hari ini?
+    // 2. Aturan: SATU kali scan per siswa per hari
+    // [DIUBAH] Ambil juga waktu & status scan sebelumnya untuk ditampilkan di popup
     const [existingPresensi] = await db.query(
-      'SELECT id FROM presensi WHERE nis = ? AND DATE(waktu_masuk) = CURDATE()',
+      'SELECT id, waktu_masuk, status FROM presensi WHERE nis = ? AND DATE(waktu_masuk) = CURDATE()',
       [nis]
     );
 
     if (existingPresensi.length > 0) {
-      return res.status(400).json({ 
-        message: 'Siswa ini sudah melakukan presensi hari ini!' 
+      // [DIUBAH] Status 400 -> 409 (Conflict) + data siswa agar frontend bisa
+      // menampilkan popup "Sudah Scan Hari Ini" yang informatif.
+      return res.status(409).json({
+        sudah_scan: true,
+        message: 'Siswa ini sudah melakukan presensi hari ini.',
+        data: {
+          nis: siswa.nis,
+          nama: siswa.nama,
+          kelas: siswa.kelas,
+          waktu_masuk: existingPresensi[0].waktu_masuk,
+          status: existingPresensi[0].status
+        }
       });
     }
 
-    const siswa = siswaRows[0];
     const waktuMasuk = new Date();
 
     // 3. Hitung keterlambatan berdasarkan jam batas di .env
@@ -60,7 +85,14 @@ exports.scanBarcode = async (req, res) => {
 
     res.json({ success: true, message: 'Absensi berhasil', data: dataAbsen });
   } catch (err) {
+    // [BARU] Dipakai bila kamu menambah UNIQUE INDEX (nis, tanggal) di database
+    // (lihat CATATAN_PERUBAHAN.md) -> database sendiri menolak data ganda.
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ sudah_scan: true, message: 'Siswa ini sudah melakukan presensi hari ini.' });
+    }
     res.status(500).json({ error: err.message });
+  } finally {
+    sedangDiproses.delete(nis); // [BARU] selalu lepas kunci, sukses maupun gagal
   }
 };
 

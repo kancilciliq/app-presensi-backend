@@ -7,5 +7,6 @@ router.post('/', siswaController.addSiswa);
 router.post('/import', siswaController.bulkImportSiswa);
 router.put('/:nis', siswaController.updateSiswa);
 router.delete('/:nis', siswaController.deleteSiswa);
+router.delete('/', siswaController.deleteAllSiswa);
 
 module.exports = router;

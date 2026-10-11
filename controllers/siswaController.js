@@ -85,3 +85,36 @@ exports.deleteSiswa = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// [BARU] Hapus SEMUA Data Siswa
+// - Wajib mengirim body { konfirmasi: 'HAPUS' } sebagai pengaman, supaya
+//   tidak terhapus tanpa sengaja (mis. request salah alamat).
+// - Memakai transaksi: riwayat presensi dihapus lebih dulu (agar tidak
+//   terhalang foreign key), lalu data siswa. Jika salah satu gagal,
+//   semuanya dibatalkan (rollback) sehingga data tidak setengah terhapus.
+exports.deleteAllSiswa = async (req, res) => {
+  if (req.body?.konfirmasi !== 'HAPUS') {
+    return res.status(400).json({ message: 'Konfirmasi tidak valid. Penghapusan dibatalkan.' });
+  }
+
+  let conn;
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+
+    await conn.query('DELETE FROM presensi');
+    const [result] = await conn.query('DELETE FROM siswa');
+
+    await conn.commit();
+    res.json({
+      success: true,
+      deleted: result.affectedRows,
+      message: `${result.affectedRows} data siswa beserta riwayat presensinya berhasil dihapus`
+    });
+  } catch (err) {
+    if (conn) await conn.rollback();
+    res.status(500).json({ error: err.message, message: 'Gagal menghapus semua data siswa' });
+  } finally {
+    if (conn) conn.release();
+  }
+};
