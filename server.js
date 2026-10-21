@@ -34,5 +34,7 @@ server.on('error', (err) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`🚀 Backend Server berjalan di http://localhost:${PORT}`);
+  const { mulaiWorkerWA } = require('./services/waService');
+  mulaiWorkerWA();
+  console.log(`Backend Server berjalan di http://localhost:${PORT}`);
 });
