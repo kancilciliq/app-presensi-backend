@@ -8,19 +8,6 @@ const { jamKeMenit, menitDalamHari } = require('../services/waktuService');
 // Daftar NIS yang sedang diproses. Jika kamera mengirim QR yang sama 2x dalam
 // hitungan milidetik, request kedua ditolak sehingga tidak tercatat ganda.
 const sedangDiproses = new Set();
-
-/* =====================================================================
-   [DIUBAH] scanBarcode - sekarang menangani scan MASUK dan scan PULANG
-   dengan satu QR yang sama. Jenis scan ditentukan otomatis oleh jam
-   (pengaturan di menu "Pengaturan Jam"):
-
-     sebelum jam_masuk_mulai          -> ditolak (presensi belum dibuka)
-     jam_masuk_mulai .. < jam_pulang_mulai
-                                      -> scan MASUK (1x per hari)
-                                         lewat jam_masuk_batas = Terlambat
-     >= jam_pulang_mulai              -> scan PULANG (1x per hari)
-                                         wajib sudah scan masuk
-   ===================================================================== */
 exports.scanBarcode = async (req, res) => {
   const nis = String(req.body?.nis ?? '').trim();
   if (!nis) {
@@ -95,7 +82,7 @@ exports.scanBarcode = async (req, res) => {
       };
 
       getIo().emit('absen_pulang', dataPulang); // [BARU] event realtime untuk scan pulang
-      kirimNotifikasiWA(siswa.no_wa_ortu, siswa.nama, sekarang, presensi.status, 'pulang');
+      kirimNotifikasiWA(siswa.no_wa_ortu, siswa.nama, sekarang, presensi.status, 'pulang', siswa.kelas); // [DIUBAH] nomor pengirim = wali kelas dari siswa.kelas
 
       return res.json({ success: true, message: 'Presensi pulang berhasil', data: dataPulang });
     }
@@ -138,7 +125,7 @@ exports.scanBarcode = async (req, res) => {
     };
 
     getIo().emit('absen_baru', dataAbsen);
-    kirimNotifikasiWA(siswa.no_wa_ortu, siswa.nama, sekarang, status, 'masuk');
+    kirimNotifikasiWA(siswa.no_wa_ortu, siswa.nama, sekarang, status, 'masuk', siswa.kelas); // [DIUBAH] nomor pengirim = wali kelas dari siswa.kelas
 
     res.json({ success: true, message: 'Presensi masuk berhasil', data: dataAbsen });
   } catch (err) {

@@ -84,6 +84,48 @@ const initDb = async () => {
       await pool.query('ALTER TABLE presensi ADD COLUMN waktu_pulang DATETIME NULL DEFAULT NULL AFTER waktu_masuk');
     }
 
+    // [BARU] 6. Antrean WhatsApp + daftar nomor wali kelas (1 nomor per kelas).
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_queue (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        target VARCHAR(30) NOT NULL,
+        pesan TEXT NOT NULL,
+        jenis VARCHAR(20) NOT NULL DEFAULT 'masuk',
+        pengirim VARCHAR(30) NOT NULL DEFAULT '',
+        status ENUM('pending','sending','sent','failed','expired') NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        last_error VARCHAR(255) NULL,
+        next_attempt_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        diklaim_at DATETIME NULL,
+        sent_at DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_wa_queue_status (status, next_attempt_at),
+        INDEX idx_wa_queue_pengirim (pengirim, status, next_attempt_at)
+      );
+    `);
+    // Untuk wa_queue lama: tambah kolom pengirim, dan pastikan kolom jenis bisa memuat 'tidak_scan'.
+    const [kolomPengirim] = await pool.query(
+      `SELECT COUNT(*) AS jml FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'wa_queue' AND COLUMN_NAME = 'pengirim'`,
+      [DB_NAME]
+    );
+    if (kolomPengirim[0].jml === 0) {
+      await pool.query(`ALTER TABLE wa_queue
+        MODIFY COLUMN jenis VARCHAR(20) NOT NULL DEFAULT 'masuk',
+        ADD COLUMN pengirim VARCHAR(30) NOT NULL DEFAULT '' AFTER jenis,
+        ADD INDEX idx_wa_queue_pengirim (pengirim, status, next_attempt_at)`);
+    }
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_pengirim (
+        kode VARCHAR(30) PRIMARY KEY,
+        nama VARCHAR(100) NOT NULL,
+        kelas VARCHAR(20) NOT NULL,
+        token VARCHAR(100) NOT NULL,
+        aktif TINYINT(1) NOT NULL DEFAULT 1,
+        UNIQUE KEY uq_wa_pengirim_kelas (kelas)
+      );
+    `);
+
     console.log(`Database '${DB_NAME}' dan tabel berhasil disiapkan.`);
   } catch (err) {
     console.error('Gagal inisialisasi database:', err);
