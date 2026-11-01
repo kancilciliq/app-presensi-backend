@@ -8,6 +8,8 @@ const { jamKeMenit, menitDalamHari } = require('../services/waktuService');
 // Daftar NIS yang sedang diproses. Jika kamera mengirim QR yang sama 2x dalam
 // hitungan milidetik, request kedua ditolak sehingga tidak tercatat ganda.
 const sedangDiproses = new Set();
+
+
 exports.scanBarcode = async (req, res) => {
   const nis = String(req.body?.nis ?? '').trim();
   if (!nis) {
@@ -141,14 +143,21 @@ exports.scanBarcode = async (req, res) => {
 
 exports.getPresensiHariIni = async (req, res) => {
   try {
-    const sql = `
+    let sql = `
       SELECT p.id, p.nis, s.nama, s.kelas, p.waktu_masuk, p.waktu_pulang, p.status 
       FROM presensi p
       JOIN siswa s ON p.nis = s.nis
       WHERE DATE(p.waktu_masuk) = CURDATE()
-      ORDER BY p.waktu_masuk DESC
     `;
-    const [rows] = await db.query(sql);
+    const params = [];
+    // [BARU] Wali kelas hanya boleh melihat siswa kelasnya sendiri
+    if (req.user?.role === 'wali_kelas') {
+      if (!req.user.kelas) return res.json([]);
+      sql += ' AND s.kelas = ?';
+      params.push(req.user.kelas);
+    }
+    sql += ' ORDER BY p.waktu_masuk DESC';
+    const [rows] = await db.query(sql, params);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -172,9 +181,13 @@ exports.getRekapPresensi = async (req, res) => {
       params.push(startDate, endDate);
     }
 
-    if (kelas && kelas !== 'Semua') {
+    // [BARU] Wali kelas selalu dipaksa ke kelasnya sendiri, apa pun isi filter dari browser
+    const kelasWali = req.user?.role === 'wali_kelas' ? req.user.kelas : null;
+    if (req.user?.role === 'wali_kelas' && !kelasWali) return res.json([]);
+    const kelasFilter = kelasWali || (kelas && kelas !== 'Semua' ? kelas : null);
+    if (kelasFilter) {
       sql += ' AND s.kelas = ?';
-      params.push(kelas);
+      params.push(kelasFilter);
     }
 
     sql += ' ORDER BY p.waktu_masuk DESC';

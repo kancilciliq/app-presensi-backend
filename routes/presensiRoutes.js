@@ -1,15 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const presensiController = require('../controllers/presensiController');
-const pengaturanController = require('../controllers/pengaturanController'); // [BARU]
+const pengaturanController = require('../controllers/pengaturanController');
+const { requireRole } = require('../middleware/auth');
 
-router.post('/scan', presensiController.scanBarcode);
-router.get('/hari-ini', presensiController.getPresensiHariIni);
-router.get('/rekap', presensiController.getRekapPresensi);
+// Login (auth) sudah dipasang di server.js. Di sini hanya pembatasan per peran.
+router.post('/scan', requireRole('admin', 'guru', 'wali_kelas'), presensiController.scanBarcode);
+router.get('/hari-ini', requireRole('admin', 'guru', 'wali_kelas'), presensiController.getPresensiHariIni);
+router.get('/rekap', requireRole('admin', 'guru', 'wali_kelas'), presensiController.getRekapPresensi);
 
-// [BARU] Pengaturan jam masuk & pulang
-// (dipasang di router ini supaya tidak perlu mengubah file server utama)
-router.get('/pengaturan', pengaturanController.getPengaturan);
-router.put('/pengaturan', pengaturanController.updatePengaturan);
+// Pengaturan jam masuk & pulang: hanya admin
+router.get('/pengaturan', requireRole('admin'), pengaturanController.getPengaturan);
+router.put('/pengaturan', requireRole('admin'), pengaturanController.updatePengaturan);
 
 module.exports = router;

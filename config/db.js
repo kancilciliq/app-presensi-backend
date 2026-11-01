@@ -126,12 +126,97 @@ const initDb = async () => {
       );
     `);
 
+    // [BARU] 7. Pengguna aplikasi (login JWT): admin, wali_kelas, guru.
+    //    Untuk wali_kelas, kolom `kelas` harus sama dengan siswa.kelas.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(30) NOT NULL UNIQUE,
+        password_hash VARCHAR(100) NOT NULL,
+        nama VARCHAR(100) NOT NULL,
+        role ENUM('admin','wali_kelas','guru') NOT NULL,
+        kelas VARCHAR(20) NULL,
+        aktif TINYINT(1) NOT NULL DEFAULT 1,
+        last_login DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // [BARU] 8. Presensi per mata pelajaran (H/I/S/A per jam pelajaran 1-4).
+    //    Kolom nis & kelas meniru collation kolom siswa agar JOIN tidak error "Illegal mix of collations".
+    const kolasi = async (tabel, kolom) => {
+      const [r] = await pool.query(
+        `SELECT CHARACTER_SET_NAME AS cs, COLLATION_NAME AS co FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+        [DB_NAME, tabel, kolom]
+      );
+      const aman = r[0] && /^[a-z0-9_]+$/i.test(r[0].cs || '') && /^[a-z0-9_]+$/i.test(r[0].co || '');
+      return aman ? `CHARACTER SET ${r[0].cs} COLLATE ${r[0].co}` : 'CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci';
+    };
+    const kolNis = await kolasi('siswa', 'nis');
+    const kolKelas = await kolasi('siswa', 'kelas');
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS mapel (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nama VARCHAR(100) NOT NULL UNIQUE,
+        aktif TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    // Daftar mata pelajaran bawaan: diisi sekali saja, hanya jika tabel mapel masih kosong.
+    // Admin bebas menambah, mengubah, atau menghapusnya di menu "Kelola Mapel".
+    const MAPEL_BAWAAN = [
+      'Bahasa Indonesia', 'Matematika', 'Ilmu Pengetahuan Alam (IPA)', 'Bahasa Arab',
+      'Sejarah Kebudayaan Islam', 'Akidah Akhlak', 'Alquran Hadits', 'Fiqih',
+      'Pendidikan Pancasila', 'Seni Budaya', 'Ilmu Pengetahuan Sosial (IPS)',
+      'Informatika', 'Bahasa Daerah', 'Aswaja'
+    ];
+    const [jmlMapel] = await pool.query('SELECT COUNT(*) AS jml FROM mapel');
+    if (Number(jmlMapel[0].jml) === 0) {
+      await pool.query('INSERT INTO mapel (nama) VALUES ?', [MAPEL_BAWAAN.map((n) => [n])]);
+      console.log(`${MAPEL_BAWAAN.length} mata pelajaran bawaan ditambahkan.`);
+    }
+
+    // Penugasan: guru X mengajar mapel Y di kelas Z
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS mengajar (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        guru_id INT NOT NULL,
+        mapel_id INT NOT NULL,
+        kelas VARCHAR(20) ${kolKelas} NOT NULL,
+        UNIQUE KEY uq_mengajar (guru_id, mapel_id, kelas),
+        KEY idx_mengajar_guru (guru_id)
+      );
+    `);
+    // Satu baris = status satu siswa pada satu jam pelajaran. mapel_id/guru_id/kelas disalin ke sini
+    // supaya riwayat tetap utuh walaupun penugasan guru diubah atau dihapus.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS presensi_mapel (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        tanggal DATE NOT NULL,
+        jam TINYINT NOT NULL,
+        kelas VARCHAR(20) ${kolKelas} NOT NULL,
+        mapel_id INT NOT NULL,
+        guru_id INT NOT NULL,
+        nis VARCHAR(20) ${kolNis} NOT NULL,
+        status ENUM('H','I','S','A') NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_presensi_mapel (tanggal, jam, nis),
+        KEY idx_pm_kelas (kelas, tanggal),
+        KEY idx_pm_nis (nis, tanggal),
+        KEY idx_pm_mapel (mapel_id)
+      );
+    `);
+
     console.log(`Database '${DB_NAME}' dan tabel berhasil disiapkan.`);
   } catch (err) {
     console.error('Gagal inisialisasi database:', err);
   }
 };
 
-initDb();
+// [BARU] Simpan promise-nya agar service lain (mis. worker WA) bisa menunggu tabel siap.
+pool.siap = initDb();
 
 module.exports = pool;
