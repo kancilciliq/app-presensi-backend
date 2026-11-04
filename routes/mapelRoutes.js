@@ -23,6 +23,7 @@ router.post('/sesi/:id', requireRole('guru', 'wali_kelas'), c.simpanSesi);
 router.get('/daftar', requireRole('admin', 'wali_kelas'), c.daftarMapelAktif);
 router.get('/rekap', requireRole('admin', 'wali_kelas'), c.rekap);
 router.get('/rekap/sesi', requireRole('admin', 'wali_kelas'), c.rekapSesi);
+router.get('/rekap/bulanan', requireRole('admin', 'wali_kelas'), c.rekapBulanan);
 router.delete('/rekap/sesi', requireRole('admin'), c.hapusSesi);
 
 module.exports = router;

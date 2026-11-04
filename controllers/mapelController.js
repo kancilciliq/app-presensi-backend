@@ -5,6 +5,7 @@
    - Wali kelas: melihat rekap kelasnya (dan boleh mengajar jika diberi penugasan)
    ===================================================================== */
 const db = require('../config/db');
+const { susunRekapBulanan, BULAN_RE } = require('../services/rekapBulananService');
 
 const STATUS = ['H', 'I', 'S', 'A'];
 const JAM = [1, 2, 3, 4];
@@ -340,6 +341,23 @@ exports.rekapSesi = async (req, res) => {
       params
     );
     res.json(rows.map((r) => ({ ...r, h: Number(r.h), i: Number(r.i), s: Number(r.s), a: Number(r.a), total: Number(r.total) })));
+  } catch (err) { galat(res, err); }
+};
+
+// Rekap bulanan per siswa (gabungan scan datang, scan pulang, dan presensi mapel).
+// Aturan status ada di services/rekapBulananService.js
+exports.rekapBulanan = async (req, res) => {
+  try {
+    const bulan = String(req.query.bulan ?? '');
+    if (!BULAN_RE.test(bulan)) return bad(res, 'Bulan wajib diisi dengan format YYYY-MM');
+    let kelas = null;
+    if (req.user.role === 'wali_kelas') {
+      if (!req.user.kelas) return res.json({ bulan, hari: [], siswa: [] });
+      kelas = req.user.kelas; // wali kelas selalu dipaksa ke kelasnya sendiri
+    } else if (req.query.kelas && req.query.kelas !== 'Semua') {
+      kelas = String(req.query.kelas);
+    }
+    res.json(await susunRekapBulanan({ bulan, kelas }));
   } catch (err) { galat(res, err); }
 };
 
