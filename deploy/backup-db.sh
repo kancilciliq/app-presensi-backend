@@ -6,7 +6,7 @@
 #   DB_NAME=absensi BACKUP_DIR=/home/deploy/backups/presensi KEEP_DAYS=14 bash deploy/backup-db.sh
 #
 # Contoh cron (setiap hari 02:00):
-#   0 2 * * * /var/www/backend/deploy/backup-db.sh >> /var/log/presensi-backup.log 2>&1
+#   0 2 * * * /var/www/backend/deploy/backup-db.sh >> /home/deploy/backups/presensi-backup.log 2>&1
 set -euo pipefail
 
 DB_NAME="${DB_NAME:-absensi}"

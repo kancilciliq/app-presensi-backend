@@ -381,7 +381,7 @@ crontab -e
 Tambahkan:
 
 ```cron
-0 2 * * * /var/www/backend/deploy/backup-db.sh >> /var/log/presensi-backup.log 2>&1
+0 2 * * * /var/www/backend/deploy/backup-db.sh >> /home/deploy/backups/presensi-backup.log 2>&1
 ```
 
 Simpan salinan backup juga di luar VPS (Google Drive, komputer sendiri, atau
