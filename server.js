@@ -35,7 +35,20 @@ socketService.getIo().use(async (socket, next) => {
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+// Import Excel bisa berisi ratusan/ribuan siswa, jadi batas 100 KB bawaan
+// Express terlalu kecil. 2 MB cukup untuk satu sekolah.
+app.use(express.json({ limit: '2mb' }));
+
+// [BARU] Health check untuk monitoring & skrip deploy. Tanpa login.
+app.get('/api/health', async (req, res) => {
+  try {
+    const db = require('./config/db');
+    await db.query('SELECT 1');
+    res.json({ status: 'ok', uptime: Math.round(process.uptime()) });
+  } catch {
+    res.status(503).json({ status: 'error', database: 'tidak tersambung' });
+  }
+});
 
 // Routes  [DIUBAH] semua route di bawah /api wajib login, kecuali /api/auth/login
 app.use('/api/auth', authRoutes);
