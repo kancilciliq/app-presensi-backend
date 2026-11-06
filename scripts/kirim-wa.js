@@ -7,8 +7,12 @@
 //   node scripts/kirim-wa.js --target 082132599037 --pesan "Halo" --tunggu 90
 //   node scripts/kirim-wa.js --target 082132599037 --pesan "Halo" --pengirim kelas_7a
 //
-// --tunggu N  menunggu sampai N detik untuk melihat status akhir (sent/failed).
-// Keluar dengan kode 0 bila status akhir 'sent', selain itu kode 1.
+// --tunggu N      menunggu sampai N detik untuk melihat status akhir (sent/failed).
+// --kunci TEKS    penanda awal pesan; bila pesan berpenanda sama sudah pernah
+//                 terkirim ke nomor itu, pesan tidak dikirim ulang.
+// --jendela-hari N  rentang pengecekan penanda (bawaan 7 hari).
+//
+// Kode keluar: 0 = terkirim, 1 = gagal/belum terkirim, 2 = sudah pernah terkirim.
 
 const db = require('../config/db');
 
@@ -75,7 +79,7 @@ const tungguStatus = async (id, detik) => {
 const utama = async () => {
   const arg = bacaArgumen(process.argv.slice(2));
   if (arg.bantuan || arg.help) {
-    console.log('Pemakaian: node scripts/kirim-wa.js --target <nomor> --pesan <teks> [--pengirim <kode>] [--tunggu <detik>]');
+    console.log('Pemakaian: node scripts/kirim-wa.js --target <nomor> --pesan <teks> [--pengirim <kode>] [--tunggu <detik>] [--kunci <teks>] [--jendela-hari <n>]');
     return;
   }
 
@@ -86,6 +90,21 @@ const utama = async () => {
 
   const pengirim = await pilihPengirim(typeof arg.pengirim === 'string' ? arg.pengirim : '');
   const jenis = 'pengumuman';
+
+  const kunci = typeof arg.kunci === 'string' ? arg.kunci.trim() : '';
+  if (kunci) {
+    const hari = Number(arg['jendela-hari']) > 0 ? Number(arg['jendela-hari']) : 7;
+    const batas = new Date(Date.now() - hari * 24 * 60 * 60 * 1000);
+    const [sudah] = await db.query(
+      "SELECT id, sent_at FROM wa_queue WHERE target=? AND jenis=? AND status='sent' AND pesan LIKE ? AND created_at >= ? LIMIT 1",
+      [target, jenis, `${kunci}%`, batas]
+    );
+    if (sudah.length > 0) {
+      console.log(`SUDAH_TERKIRIM #${sudah[0].id} pada ${sudah[0].sent_at}`);
+      process.exitCode = 2;
+      return;
+    }
+  }
 
   const [hasil] = await db.query(
     'INSERT INTO wa_queue (target, pesan, jenis, pengirim) VALUES (?, ?, ?, ?)',
