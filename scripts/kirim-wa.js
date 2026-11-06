@@ -88,6 +88,9 @@ const utama = async () => {
   if (!target) throw new Error('--target wajib diisi, contoh: 082132599037');
   if (!pesan) throw new Error('--pesan wajib diisi');
 
+  // Tunggu pembuatan tabel selesai agar tidak bentrok dengan pool yang ditutup.
+  if (db.siap) await db.siap;
+
   const pengirim = await pilihPengirim(typeof arg.pengirim === 'string' ? arg.pengirim : '');
   const jenis = 'pengumuman';
 
@@ -96,11 +99,11 @@ const utama = async () => {
     const hari = Number(arg['jendela-hari']) > 0 ? Number(arg['jendela-hari']) : 7;
     const batas = new Date(Date.now() - hari * 24 * 60 * 60 * 1000);
     const [sudah] = await db.query(
-      "SELECT id, sent_at FROM wa_queue WHERE target=? AND jenis=? AND status='sent' AND pesan LIKE ? AND created_at >= ? LIMIT 1",
+      "SELECT id, status, sent_at FROM wa_queue WHERE target=? AND jenis=? AND status IN ('pending','sending','sent') AND pesan LIKE ? AND created_at >= ? LIMIT 1",
       [target, jenis, `${kunci}%`, batas]
     );
     if (sudah.length > 0) {
-      console.log(`SUDAH_TERKIRIM #${sudah[0].id} pada ${sudah[0].sent_at}`);
+      console.log(`SUDAH_TERKIRIM #${sudah[0].id} (${sudah[0].status}) pada ${sudah[0].sent_at || '-'}`);
       process.exitCode = 2;
       return;
     }
