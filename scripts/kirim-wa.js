@@ -5,16 +5,24 @@
 // Pemakaian (dari folder backend):
 //   node scripts/kirim-wa.js --target 082132599037 --pesan "Halo"
 //   node scripts/kirim-wa.js --target 082132599037 --pesan "Halo" --tunggu 90
-//   node scripts/kirim-wa.js --target 082132599037 --pesan "Halo" --pengirim kelas_7a
+//   node scripts/kirim-wa.js --target 082132599037 --pesan "Halo" --pengirim sistem
 //
 // --tunggu N      menunggu sampai N detik untuk melihat status akhir (sent/failed).
 // --kunci TEKS    penanda awal pesan; bila pesan berpenanda sama sudah pernah
 //                 terkirim ke nomor itu, pesan tidak dikirim ulang.
 // --jendela-hari N  rentang pengecekan penanda (bawaan 7 hari).
 //
+// Nomor wali kelas (kode berawalan "kelas_") TIDAK dipakai skrip ini. Nomor itu
+// milik guru dan hanya untuk notifikasi ke orang tua per kelas. Pengumuman
+// sistem harus lewat nomor tersendiri. Kalau memang terpaksa, tambahkan
+// --izinkan-nomor-wali-kelas secara sadar.
+//
 // Kode keluar: 0 = terkirim, 1 = gagal/belum terkirim, 2 = sudah pernah terkirim.
 
-const db = require('../config/db');
+// Nomor wali kelas dipakai aplikasi untuk notifikasi ke orang tua per kelas.
+// Skrip ini untuk pengumuman sistem, jadi nomor wali kelas ditolak.
+const AWALAN_WALI_KELAS = /^kelas_/;
+const nomorWaliKelas = (kode) => AWALAN_WALI_KELAS.test(String(kode || ''));
 
 const bacaArgumen = (argv) => {
   const hasil = {};
@@ -32,6 +40,22 @@ const bacaArgumen = (argv) => {
   }
   return hasil;
 };
+
+// Tolak lebih awal, sebelum database dibuka, supaya pesannya tunggal dan jelas.
+const argAwal = bacaArgumen(process.argv.slice(2));
+if (
+  typeof argAwal.pengirim === 'string' &&
+  nomorWaliKelas(argAwal.pengirim) &&
+  !argAwal['izinkan-nomor-wali-kelas']
+) {
+  console.error(
+    `GAGAL: Pengirim '${argAwal.pengirim}' adalah nomor wali kelas dan tidak dipakai untuk pengumuman sistem. ` +
+      'Pakai nomor khusus pengumuman, atau tambahkan --izinkan-nomor-wali-kelas bila memang disengaja.'
+  );
+  process.exit(1);
+}
+
+const db = require('../config/db');
 
 // Fonnte menerima 08xxx maupun 62xxx; simpan dalam bentuk 62 agar konsisten.
 const rapikanNomor = (nomor) => {
@@ -54,9 +78,13 @@ const pilihPengirim = async (kode) => {
     return baris[0];
   }
   const [baris] = await db.query(
-    "SELECT kode, nama, token FROM wa_pengirim WHERE aktif=1 AND token<>'' ORDER BY kode LIMIT 1"
+    "SELECT kode, nama, token FROM wa_pengirim WHERE aktif=1 AND token<>'' AND kode NOT REGEXP '^kelas_' ORDER BY kode LIMIT 1"
   );
-  if (baris.length === 0) throw new Error('Tidak ada nomor pengirim aktif dengan token');
+  if (baris.length === 0) {
+    throw new Error(
+      'Tidak ada nomor pengirim non-wali-kelas yang aktif. Tambahkan satu nomor khusus pengumuman di tabel wa_pengirim (misal kode "sistem"), lalu jalankan ulang.'
+    );
+  }
   return baris[0];
 };
 
@@ -80,6 +108,7 @@ const utama = async () => {
   const arg = bacaArgumen(process.argv.slice(2));
   if (arg.bantuan || arg.help) {
     console.log('Pemakaian: node scripts/kirim-wa.js --target <nomor> --pesan <teks> [--pengirim <kode>] [--tunggu <detik>] [--kunci <teks>] [--jendela-hari <n>]');
+    console.log('Nomor wali kelas (kelas_*) ditolak; override sadar: --izinkan-nomor-wali-kelas');
     return;
   }
 

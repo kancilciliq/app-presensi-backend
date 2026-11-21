@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const helmet = require('helmet');
 require('dotenv').config();
 
 const socketService = require('./services/socketService');
@@ -34,7 +35,9 @@ socketService.getIo().use(async (socket, next) => {
 });
 
 // Middleware
-app.use(cors());
+app.use(helmet());
+const allowedOrigins = (process.env.CORS_ORIGIN || 'https://absen.mts-musidomulyo.cloud,http://localhost:5173,http://127.0.0.1:5173').split(',').map(s => s.trim());
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 // Import Excel bisa berisi ratusan/ribuan siswa, jadi batas 100 KB bawaan
 // Express terlalu kecil. 2 MB cukup untuk satu sekolah.
 app.use(express.json({ limit: '2mb' }));

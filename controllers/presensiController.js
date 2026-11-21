@@ -13,7 +13,7 @@ const sedangDiproses = new Set();
 exports.scanBarcode = async (req, res) => {
   const nis = String(req.body?.nis ?? '').trim();
   if (!nis) {
-    return res.status(400).json({ message: 'NIS tidak boleh kosong' });
+    return res.status(400).json({ message: 'NISN tidak boleh kosong' });
   }
 
   if (sedangDiproses.has(nis)) {
@@ -168,18 +168,23 @@ exports.getRekapPresensi = async (req, res) => {
   const { startDate, endDate, kelas } = req.query;
 
   try {
-    let sql = `
-      SELECT p.id, p.nis, s.nama, s.kelas, p.waktu_masuk, p.waktu_pulang, p.status 
-      FROM presensi p
-      JOIN siswa s ON p.nis = s.nis
-      WHERE 1=1
-    `;
+    // [BARU] Ambil semua siswa dalam scope lalu LEFT JOIN presensi, supaya siswa
+    //      yang belum scan tetap tampil (status 'Belum Scan') dan tidak hilang
+    //      dari daftar rekap.
+    let kondisiJoin = '1=1';
     const params = [];
-
     if (startDate && endDate) {
-      sql += ' AND DATE(p.waktu_masuk) BETWEEN ? AND ?';
+      kondisiJoin = 'DATE(p.waktu_masuk) BETWEEN ? AND ?';
       params.push(startDate, endDate);
     }
+
+    let sql = `
+      SELECT s.nis, s.nama, s.kelas, p.id, p.waktu_masuk, p.waktu_pulang, COALESCE(p.status, 'Belum Scan') AS status
+      FROM siswa s
+      LEFT JOIN presensi p
+        ON p.nis = s.nis AND ${kondisiJoin}
+      WHERE 1=1
+    `;
 
     // [BARU] Wali kelas selalu dipaksa ke kelasnya sendiri, apa pun isi filter dari browser
     const kelasWali = req.user?.role === 'wali_kelas' ? req.user.kelas : null;
